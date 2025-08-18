@@ -165,7 +165,7 @@ class Photonizer(QMainWindow):
     def __init__(self, base_dir: Path):
         super().__init__()
         self.base_dir = base_dir
-        self.setWindowTitle("Photonizer — 수동 이미지 분류기")
+        self.setWindowTitle("Photonizer beta")
         self.resize(1200, 800)
 
         # 상태
@@ -182,8 +182,6 @@ class Photonizer(QMainWindow):
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.Stretch)
-        # self.table.setEditTriggers(self.table.NoEditTriggers)
-        # self.table.setSelectionMode(self.table.NoSelection)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.setSelectionMode(QAbstractItemView.NoSelection)
         self.table.setFocusPolicy(Qt.NoFocus)
@@ -272,7 +270,7 @@ class Photonizer(QMainWindow):
             folder: Optional[str] = None
 
             # 다양한 구분자 허용
-            patterns = [r"^([^\s=:\->\t]+)\s*->\s*(.+)$",  # a -> path
+            patterns = [r"^([^\s=:\->\t]+)\s*->\s*(.+)$",   # a -> path
                         r"^([^\s=:\t]+)\s*[:=]\s*(.+)$",    # a = path, a: path
                         r"^([^\s\t])\s+(.+)$",              # a path
                         r"^([^\s\t])\t(.+)$"]               # a\tpath
@@ -340,7 +338,7 @@ class Photonizer(QMainWindow):
             self.index = len(self.images) - 1
         current = self.images[self.index]
         self.viewer.show_image(current)
-        self.status.showMessage(f"{self.index + 1} / {len(self.images)}  —  {current.name}")
+        self.status.showMessage(f"[{self.index + 1} / {len(self.images)}]  —  {current.name}")
 
     # ---------------------- 이동/되돌리기 ----------------------
     def move_current_to(self, key: str):
