@@ -362,8 +362,12 @@ class Photonizer(QMainWindow):
             del self.images[self.index]
             if self.index >= len(self.images):
                 self.index = len(self.images) - 1
+            # self.update_view()
+            # self.status.showMessage(f"이동: {src_path.name} → {human_path(final_dst, self.base_dir)}")
             self.update_view()
-            self.status.showMessage(f"이동: {src_path.name} → {human_path(final_dst, self.base_dir)}")
+            count_str = f"{self.index + 1} / {len(self.images)}" if self.images else "0 / 0"
+            self.status.showMessage(f"[{count_str}] 이동: {src_path.name} → {human_path(final_dst, self.base_dir)}")
+
         except Exception as e:
             QMessageBox.critical(self, "이동 실패", f"파일 이동 중 오류:\n{e}")
 
@@ -396,7 +400,9 @@ class Photonizer(QMainWindow):
             self.images.insert(insert_at, back_path)
             self.index = insert_at
             self.update_view()
-            self.status.showMessage(f"되돌림: {human_path(moved, self.base_dir)} → {human_path(back_path, self.base_dir)}")
+            count_str = f"{self.index + 1} / {len(self.images)}" if self.images else "0 / 0"
+            self.status.showMessage(f"[{count_str}] 되돌림: {human_path(moved, self.base_dir)} → {human_path(back_path, self.base_dir)}")
+
         except Exception as e:
             QMessageBox.critical(self, "되돌리기 실패", f"이동 되돌리기 중 오류:\n{e}")
 
