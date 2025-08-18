@@ -1,3 +1,0 @@
-d:\ptn\src
-a=d:\ptn\a
-b=d:\ptn\b
