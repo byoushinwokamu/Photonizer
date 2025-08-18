@@ -1,0 +1,3 @@
+/mnt/d/test
+a=/mnt/d/ptn/a
+b=/mnt/d/ptn/b
