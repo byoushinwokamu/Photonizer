@@ -7,7 +7,7 @@ import shutil
 class ImageSorter(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("Photonizer alpha")
+        self.title("수동 이미지 분류 프로그램")
         self.geometry("1200x800")
         
         self.target_folder = None
@@ -29,7 +29,52 @@ class ImageSorter(tk.Tk):
             return
 
         self.create_widgets()
-        self.show_image()
+        # 창이 그려질 때까지 이미지 표시를 지연시킵니다.
+        self._first_show = False
+        self.bind('<Configure>', self.on_configure)
+
+    def on_configure(self, event):
+        """창이 완전히 그려졌을 때 이미지를 한 번만 표시합니다."""
+        if not self._first_show:
+            self._first_show = True
+            # 창의 크기가 확정되었으므로 이제 이미지를 표시해도 안전합니다.
+            self.show_image()
+
+    def create_widgets(self):
+        """GUI 위젯을 생성합니다."""
+        main_frame = tk.Frame(self)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        
+        # 이미지 뷰어
+        self.image_frame = tk.Frame(main_frame, width=800, height=600)
+        self.image_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 20))
+        self.image_frame.pack_propagate(False)
+
+        self.image_label = tk.Label(self.image_frame)
+        self.image_label.pack(fill=tk.BOTH, expand=True)
+
+        # 정보 표시 영역
+        info_frame = tk.Frame(main_frame, width=300)
+        info_frame.pack(side=tk.RIGHT, fill=tk.Y)
+
+        current_file_label = tk.Label(info_frame, text="현재 파일:", font=("Arial", 12, "bold"))
+        current_file_label.pack(anchor="w", pady=(0, 5))
+        self.filename_label = tk.Label(info_frame, text="", font=("Arial", 10))
+        self.filename_label.pack(anchor="w", pady=(0, 15))
+
+        target_label = tk.Label(info_frame, text="타겟 폴더 (단축키):", font=("Arial", 12, "bold"))
+        target_label.pack(anchor="w", pady=(0, 5))
+
+        for key, path in self.target_keys.items():
+            folder_name = os.path.basename(path)
+            label_text = f"[{key}]  {folder_name}"
+            label = tk.Label(info_frame, text=label_text, font=("Arial", 10))
+            label.pack(anchor="w")
+
+        # 키 바인딩
+        for key in self.target_keys.keys():
+            self.bind(f'<Key-{key}>', self.move_file)
+        self.bind('<Key-z>', self.undo_move)
 
     def load_targets(self):
         """targets.txt 파일에서 폴더 및 단축키 정보를 불러옵니다."""
@@ -96,7 +141,7 @@ class ImageSorter(tk.Tk):
             messagebox.showinfo("완료", "모든 이미지를 분류했습니다.")
             self.destroy()
             return
-            
+
         file_name = self.image_list[self.current_image_index]
         file_path = os.path.join(self.target_folder, file_name)
         self.filename_label.config(text=file_name)
@@ -105,15 +150,27 @@ class ImageSorter(tk.Tk):
             image = Image.open(file_path)
             self.display_image(image)
         except Exception as e:
-            messagebox.showerror("오류", f"이미지를 열 수 없습니다: {file_name}\n{e}")
+            # 오류가 발생한 경우, 현재 파일을 건너뛰고 다음 파일로 이동
+            messagebox.showerror("오류", f"이미지를 열 수 없습니다: {file_name}\n({e})\n다음 이미지로 넘어갑니다.")
             self.next_image()
 
     def display_image(self, image):
         """이미지를 창 크기에 맞춰 조정하고 표시합니다."""
+        # 프레임의 실제 너비와 높이를 가져옵니다.
         view_width = self.image_frame.winfo_width()
         view_height = self.image_frame.winfo_height()
-        
+
+        # 만약 프레임 크기가 0이라면, 안전하게 기본값을 설정합니다.
+        if view_width == 0 or view_height == 0:
+            view_width = 800  # 기본값 설정
+            view_height = 600
+            
         img_width, img_height = image.size
+
+        # 만약 이미지 크기가 0이라면 오류를 피하기 위해 건너뜁니다.
+        if img_width == 0 or img_height == 0:
+            self.next_image()
+            return
         
         # 비율 유지를 위한 크기 조정
         ratio_w = view_width / img_width
@@ -122,6 +179,10 @@ class ImageSorter(tk.Tk):
         
         new_width = int(img_width * ratio)
         new_height = int(img_height * ratio)
+
+        # 혹시나 계산 결과가 0이 될 경우를 대비해 1 이상의 값을 보장합니다.
+        new_width = max(1, new_width)
+        new_height = max(1, new_height)
         
         resized_image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
         
