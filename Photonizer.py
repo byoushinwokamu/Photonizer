@@ -48,7 +48,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from PySide6.QtCore import Qt, QSize, QTimer
+from PySide6.QtCore import Qt, QSize, QTimer, QByteArray, QBuffer, QIODevice
 from PySide6.QtGui import QPixmap, QImageReader, QKeySequence, QAction, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
@@ -105,12 +105,24 @@ class ScaledImageLabel(QLabel):
         self._orig_pixmap: Optional[QPixmap] = None
         self._movie: Optional[QMovie] = None
         self._current_path: Optional[Path] = None
+        # 🔽 메모리 재생용 버퍼 보관 (GC 방지)
+        self._buffer: Optional[QBuffer] = None
+        self._qba: Optional[QByteArray] = None
 
     def clear_content(self):
         if self._movie:
             self._movie.stop()
             self._movie.deleteLater()
         self._movie = None
+        # 🔽 버퍼도 닫고 해제
+        if self._buffer:
+            try:
+                self._buffer.close()
+            except Exception:
+                pass
+        self._buffer = None
+        self._qba = None
+
         self._orig_pixmap = None
         self.setMovie(None)
         self.setPixmap(QPixmap())
@@ -121,19 +133,33 @@ class ScaledImageLabel(QLabel):
 
         suffix = path.suffix.lower()
         if suffix in {".gif", ".webp"}:
-            # 애니메이션 우선 시도(QMovie). 지원 안하면 정지로 fallback
-            movie = QMovie(str(path))
-            if movie.isValid():
-                self._movie = movie
-                # 첫 프레임 사이즈 기반으로 스케일
-                movie.jumpToFrame(0)
-                target = fit_size(movie.currentImage().size(), self.size())
-                if target.width() > 0 and target.height() > 0:
-                    movie.setScaledSize(target)
-                self.setMovie(movie)
-                movie.start()
-                return
-            # fallback to static
+            # 🔽 파일을 메모리로 읽어서 QBuffer로 감싼 뒤 QMovie의 디바이스로 사용
+            try:
+                data = Path(path).read_bytes()
+                self._qba = QByteArray(data)            # 데이터 보관 (GC 방지)
+                self._buffer = QBuffer(self._qba)       # QIODevice
+                self._buffer.open(QIODevice.ReadOnly)
+
+                movie = QMovie(self._buffer)
+                if movie.isValid():
+                    self._movie = movie
+                    movie.jumpToFrame(0)
+                    target = fit_size(movie.currentImage().size(), self.size())
+                    if target.width() > 0 and target.height() > 0:
+                        movie.setScaledSize(target)
+                    self.setMovie(movie)
+                    movie.start()
+                    return
+                else:
+                    # 만약 애니메이션 플러그인이 없어 invalid이면 정지 이미지로 처리
+                    self._buffer.close()
+                    self._buffer = None
+                    self._qba = None
+            except Exception:
+                # 문제가 생기면 정지 이미지 fallback
+                self._buffer = None
+                self._qba = None
+            # ↘ 아래로 내려가 정지 이미지 로딩
 
         # 정지 이미지 로딩(QImageReader, EXIF 회전 자동 적용)
         reader = QImageReader(str(path))
@@ -146,6 +172,7 @@ class ScaledImageLabel(QLabel):
         self._orig_pixmap = pm
         scaled = pm.scaled(self.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
         self.setPixmap(scaled)
+
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
