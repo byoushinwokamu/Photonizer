@@ -1,3 +1,3 @@
 .venv/Scripts/Activate.ps1
-python chatgpt.py
+python Photonizer.py
 deactivate
