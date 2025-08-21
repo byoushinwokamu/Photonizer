@@ -2,7 +2,7 @@ import os
 import sys
 
 def save_path_info(path: str):
-    # 파일명 추출 (예: dcinside0.txt)
+    # 파일명 추출 (예: DCIM.txt)
     base_name = os.path.basename(path)
     txt_filename = f"{base_name}.txt"
     
