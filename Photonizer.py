@@ -245,6 +245,10 @@ class Photonizer(QMainWindow):
 
         # Undo (z)
         QShortcut(QKeySequence("Z"), self, activated=self.undo_last)
+				# 좌우 방향키로 이전/다음 이미지 보기
+        QShortcut(QKeySequence(Qt.Key_Right), self, activated=self.next_image)
+        QShortcut(QKeySequence(Qt.Key_Left), self, activated=self.prev_image)
+
 
     # ---------------------- 설정/입력 ----------------------
     def open_targets_dialog(self):
@@ -365,7 +369,7 @@ class Photonizer(QMainWindow):
             self.index = len(self.images) - 1
         current = self.images[self.index]
         self.viewer.show_image(current)
-        self.status.showMessage(f"[{self.index + 1} / {len(self.images)}]  —  {current.name}")
+        self.status.showMessage(f"[{self.index + 1} / {len(self.images)}] — {current.name}")
 
     # ---------------------- 이동/되돌리기 ----------------------
     def move_current_to(self, key: str):
@@ -441,6 +445,22 @@ class Photonizer(QMainWindow):
             self.table.setItem(row, 0, QTableWidgetItem(key))
             self.table.setItem(row, 1, QTableWidgetItem(human_path(tgt.dir, self.base_dir)))
         self.table.resizeRowsToContents()
+    def next_image(self):
+        """다음 이미지"""
+        if not self.images:
+            return
+        if self.index < len(self.images) - 1:
+            self.index += 1
+        self.update_view()
+
+    def prev_image(self):
+        """이전 이미지"""
+        if not self.images:
+            return
+        if self.index > 0:
+            self.index -= 1
+        self.update_view()
+
 
 
 def main():
