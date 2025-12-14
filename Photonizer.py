@@ -239,6 +239,8 @@ class Photonizer(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "targets.txt 오류", f"targets.txt 로딩 중 오류:\n{e}")
 
+        self.copy_mode = False
+
         self.refresh_table()
         self.load_images()
         self.update_view()
@@ -249,6 +251,7 @@ class Photonizer(QMainWindow):
         QShortcut(QKeySequence(Qt.Key_Right), self, activated=self.next_image)
         QShortcut(QKeySequence(Qt.Key_Left), self, activated=self.prev_image)
 
+        QShortcut(QKeySequence("P"), self, activated=self.toggle_copy_mode)
 
     # ---------------------- 설정/입력 ----------------------
     def open_targets_dialog(self):
@@ -369,7 +372,9 @@ class Photonizer(QMainWindow):
             self.index = len(self.images) - 1
         current = self.images[self.index]
         self.viewer.show_image(current)
-        self.status.showMessage(f"[{self.index + 1} / {len(self.images)}] — {current.name}")
+        prefix = "[복사] " if self.copy_mode else ""
+        self.status.showMessage(f"{prefix}[{self.index + 1} / {len(self.images)}] — {current.name}")
+
 
     # ---------------------- 이동/되돌리기 ----------------------
     def move_current_to(self, key: str):
@@ -377,28 +382,40 @@ class Photonizer(QMainWindow):
             return
         if key not in self.targets:
             return
+
         src_path = self.images[self.index]
         tgt_dir = self.targets[key].dir
         dst_path = tgt_dir / src_path.name
 
         try:
-            # 충돌 시, 고유한 이름 생성
             final_dst = self._unique_path(dst_path)
-            shutil.move(str(src_path), str(final_dst))  # 순수 이동
-            self.history.append((src_path, final_dst))
 
-            # 리스트에서 제거 및 다음 이미지 표시
-            del self.images[self.index]
-            if self.index >= len(self.images):
-                self.index = len(self.images) - 1
-            # self.update_view()
-            # self.status.showMessage(f"이동: {src_path.name} → {human_path(final_dst, self.base_dir)}")
+            if self.copy_mode:
+                # -------- 복사 모드 --------
+                shutil.copy2(str(src_path), str(final_dst))
+                prefix = "[복사]"
+                # 인덱스/이미지 리스트 변경 없음
+            else:
+                # -------- 이동 모드 --------
+                shutil.move(str(src_path), str(final_dst))
+                self.history.append((src_path, final_dst))
+                del self.images[self.index]
+                if self.index >= len(self.images):
+                    self.index = len(self.images) - 1 if self.images else 0
+                prefix = "[이동]"
+
+            # 화면 갱신
             self.update_view()
+
             count_str = f"{self.index + 1} / {len(self.images)}" if self.images else "0 / 0"
-            self.status.showMessage(f"[{count_str}] 이동: {src_path.name} → {human_path(final_dst, self.base_dir)}")
+
+            action = "복사" if self.copy_mode else "이동"
+            self.status.showMessage(
+                f"{prefix} [{count_str}] {action}: {src_path.name} → {human_path(final_dst, self.base_dir)}"
+            )
 
         except Exception as e:
-            QMessageBox.critical(self, "이동 실패", f"파일 이동 중 오류:\n{e}")
+            QMessageBox.critical(self, "오류", f"{action} 중 오류:\n{e}")
 
     def _unique_path(self, path: Path) -> Path:
         if not path.exists():
@@ -460,6 +477,20 @@ class Photonizer(QMainWindow):
         if self.index > 0:
             self.index -= 1
         self.update_view()
+
+    # 복사 모드
+    def toggle_copy_mode(self):
+        self.copy_mode = not self.copy_mode
+        mode = "ON" if self.copy_mode else "OFF"
+
+        # 상태바 갱신
+        if self.images:
+            current = self.images[self.index].name
+            prefix = "[복사] " if self.copy_mode else ""
+            self.status.showMessage(f"{prefix}[{self.index + 1} / {len(self.images)}] — {current} (복사 모드 {mode})")
+        else:
+            self.status.showMessage(f"복사 모드 {mode}")
+
 
 
 
