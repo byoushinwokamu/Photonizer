@@ -67,6 +67,7 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
 )
 from PySide6.QtGui import QMovie
+from bisect import bisect_left
 
 SUPPORTED_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
 RESERVED_KEYS = {"z"}
@@ -88,6 +89,16 @@ def fit_size(content: QSize, box: QSize) -> QSize:
     r = min(rw, rh)
     return QSize(max(1, int(content.width() * r)), max(1, int(content.height() * r)))
 
+def natural_key(name: str):
+    # "img2" < "img10" 같은 자연 정렬
+    parts = re.split(r"(\d+)", name)
+    out = []
+    for p in parts:
+        if p.isdigit():
+            out.append(int(p))
+        else:
+            out.append(p.casefold())
+    return tuple(out)
 
 @dataclass
 class Target:
@@ -201,6 +212,9 @@ class Photonizer(QMainWindow):
         self.images: List[Path] = []
         self.index: int = 0
         self.history: List[Tuple[Path, Path]] = []  # (original_path, moved_to_path)
+				# 정렬 모드: name / mtime / ctime
+        self.sort_mode: str = "name"
+
 
         # UI
         self.viewer = ScaledImageLabel()
@@ -252,6 +266,11 @@ class Photonizer(QMainWindow):
         QShortcut(QKeySequence(Qt.Key_Left), self, activated=self.prev_image)
 
         QShortcut(QKeySequence("P"), self, activated=self.toggle_copy_mode)
+				# 정렬 변경 단축키
+        QShortcut(QKeySequence(Qt.Key_F1), self, activated=lambda: self.set_sort_mode("name"))
+        QShortcut(QKeySequence(Qt.Key_F2), self, activated=lambda: self.set_sort_mode("mtime"))
+        QShortcut(QKeySequence(Qt.Key_F3), self, activated=lambda: self.set_sort_mode("ctime"))
+
 
     # ---------------------- 설정/입력 ----------------------
     def open_targets_dialog(self):
@@ -359,6 +378,7 @@ class Photonizer(QMainWindow):
             if entry.suffix.lower() in SUPPORTED_EXTS:
                 self.images.append(entry.resolve())
         self.index = 0
+        self.apply_sort(keep_current=False)
 
     def update_view(self):
         if not self.images:
@@ -373,7 +393,9 @@ class Photonizer(QMainWindow):
         current = self.images[self.index]
         self.viewer.show_image(current)
         prefix = "[복사] " if self.copy_mode else ""
-        self.status.showMessage(f"{prefix}[{self.index + 1} / {len(self.images)}] — {current.name}")
+        # self.status.showMessage(f"{prefix}[{self.index + 1} / {len(self.images)}] — {current.name}")
+        self.status.showMessage(f"[정렬:{self.sort_label()}] [{self.index + 1} / {len(self.images)}] — {current.name}")
+
 
 
     # ---------------------- 이동/되돌리기 ----------------------
@@ -442,10 +464,16 @@ class Photonizer(QMainWindow):
             shutil.move(str(moved), str(back_path))
 
             # 현재 위치에 되돌린 파일을 삽입하고 그걸 보이도록 함
-            insert_at = max(0, self.index)
-            self.images.insert(insert_at, back_path)
-            self.index = insert_at
+            # 정렬 유지 삽입: back_path가 들어갈 위치를 찾아서 삽입
+            key_back = self.sort_key(back_path)
+            keys = [self.sort_key(p) for p in self.images]
+            pos = bisect_left(keys, key_back)
+
+            self.images.insert(pos, back_path)
+            self.index = pos
+
             self.update_view()
+
             count_str = f"{self.index + 1} / {len(self.images)}" if self.images else "0 / 0"
             self.status.showMessage(f"[{count_str}] 되돌림: {human_path(moved, self.base_dir)} → {human_path(back_path, self.base_dir)}")
 
@@ -490,6 +518,56 @@ class Photonizer(QMainWindow):
             self.status.showMessage(f"{prefix}[{self.index + 1} / {len(self.images)}] — {current} (복사 모드 {mode})")
         else:
             self.status.showMessage(f"복사 모드 {mode}")
+
+    def sort_label(self) -> str:
+        return {"name": "이름", "mtime": "수정시간", "ctime": "생성시간"}.get(self.sort_mode, self.sort_mode)
+
+    def sort_key(self, p: Path):
+        # tie-breaker로 이름도 같이 넣어서 안정적으로 정렬
+        if self.sort_mode == "name":
+            return (natural_key(p.name),)
+        elif self.sort_mode == "mtime":
+            try:
+                t = p.stat().st_mtime
+            except Exception:
+                t = 0.0
+            return (-t, natural_key(p.name))  # 최신 우선
+        elif self.sort_mode == "ctime":
+            try:
+                t = p.stat().st_ctime
+            except Exception:
+                t = 0.0
+            return (-t, natural_key(p.name))  # 최신 우선
+        else:
+            return (natural_key(p.name),)
+
+    def apply_sort(self, keep_current: bool = True):
+        """현재 images 리스트를 sort_mode 기준으로 정렬. keep_current면 현재 보고 있던 파일을 최대한 유지."""
+        if not self.images:
+            return
+
+        current_path = None
+        if keep_current and 0 <= self.index < len(self.images):
+            current_path = self.images[self.index]
+
+        self.images.sort(key=self.sort_key)
+
+        # 현재 파일 유지(가능하면)
+        if current_path is not None:
+            try:
+                self.index = self.images.index(current_path)
+            except ValueError:
+                self.index = min(self.index, len(self.images) - 1)
+
+    def set_sort_mode(self, mode: str):
+        if mode not in ("name", "mtime", "ctime"):
+            return
+        if self.sort_mode == mode:
+            return
+        self.sort_mode = mode
+        self.apply_sort(keep_current=True)
+        self.update_view()
+
 
 
 
